@@ -28,15 +28,12 @@ input[type=number]{width:64px;padding:5px;border-radius:6px;border:1px solid var
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{padding:4px 9px;font-size:.78rem;background:transparent;color:var(--text);border:1px solid var(--bd)}
 .chips button:hover{border-color:var(--acc)}
-#tl{width:100%;height:110px;display:block;border:1px solid var(--bd);border-radius:8px;margin-top:10px}
-#mt{font-size:.85rem;color:var(--mut)}
-#seek{flex:1;min-width:140px}
 </style>
 </head>
 <body>
 <main>
 <h1>GD Clickpack Tester</h1>
-<p class="s">Load a clickpack folder, then click the pad or hold Space. Nothing is uploaded; it all runs in your browser.</p>
+<p class="s">Load a clickpack folder, then click the pad or hold Space, W or Up arrow. Nothing is uploaded; it all runs in your browser.</p>
 
 <div class="card">
   <label class="btn">Load folder<input id="dir" type="file" webkitdirectory multiple></label>
@@ -46,7 +43,7 @@ input[type=number]{width:64px;padding:5px;border-radius:6px;border:1px solid var
 </div>
 
 <div class="card">
-  <div id="pad" tabindex="0"><b>Click / hold here</b><span id="last" style="color:var(--mut);font-size:.85rem;margin-top:6px">or press Space</span></div>
+  <div id="pad" tabindex="0"><b>Click / hold here</b><span id="last" style="color:var(--mut);font-size:.85rem;margin-top:6px">or press Space / W / Up arrow</span></div>
   <div class="row">
     <label>Volume <input id="vol" type="range" min="0" max="1" step=".01" value=".8"></label>
     <label>Pitch jitter <input id="jit" type="checkbox"></label>
@@ -58,20 +55,6 @@ input[type=number]{width:64px;padding:5px;border-radius:6px;border:1px solid var
     <label>Soft &lt; <input id="t2" type="number" step=".01" value=".20">s</label>
     <label>Hard &gt; <input id="t3" type="number" step=".1" value="2">s</label>
   </div>
-</div>
-
-<div class="card">
-  <label class="btn">Import macro<input id="mfile" type="file"></label>
-  <span id="mstat" style="color:var(--mut);font-size:.85rem;margin-left:8px">Supports JSON macros (.gdr.json, Mega Hack .json, etc.) and text frame lists.</span>
-  <div class="row">
-    <button id="mplay">Play</button>
-    <button class="g" id="mrst">Restart</button>
-    <label>FPS <input id="mfps" type="number" value="240" min="1"></label>
-    <label>Speed <select id="spd"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option></select></label>
-    <label>Include P2 <input id="p2" type="checkbox" checked></label>
-  </div>
-  <div class="row"><input id="seek" type="range" min="0" max="1" step="0.001" value="0"><span id="mt">0.00s / 0.00s</span></div>
-  <canvas id="tl"></canvas>
 </div>
 
 <div class="card"><div id="list"><span style="color:var(--mut);font-size:.9rem">Loaded sounds appear here. Click one to preview it.</span></div></div>
@@ -153,8 +136,9 @@ function up(){
 const pad=$('pad');
 pad.addEventListener('pointerdown',e=>{e.preventDefault();down()});
 addEventListener('pointerup',up);
-addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT/.test(document.activeElement.tagName)){e.preventDefault();down()}});
-addEventListener('keyup',e=>{if(e.code==='Space')up()});
+const KEYS=['Space','ArrowUp','KeyW'],heldKeys=new Set();
+addEventListener('keydown',e=>{if(KEYS.includes(e.code)&&!e.repeat&&!/INPUT|SELECT/.test(document.activeElement.tagName)){e.preventDefault();heldKeys.add(e.code);down()}});
+addEventListener('keyup',e=>{if(KEYS.includes(e.code)){heldKeys.delete(e.code);if(!heldKeys.size)up()}});
 $('vol').oninput=e=>gain.gain.value=+e.target.value;gain.gain.value=.8;
 $('dir').onchange=e=>load(e.target.files);
 $('files').onchange=e=>load(e.target.files);
@@ -166,115 +150,6 @@ $('spam').onclick=()=>{
   $('spam').textContent='Stop';
   timer=setInterval(()=>{down();setTimeout(up,per/2)},per);
 };
-/* ---- macro playback ---- */
-let M=null,EV=[],SEG=[],DUR=0,playing=false,base=0,t0=0,idx=0,spd=1,mLast=-1e9,mDown=0;
-function dfs(o){
-  if(Array.isArray(o)){
-    if(o.length&&o[0]&&typeof o[0]==='object'&&('frame' in o[0]||'f' in o[0]))return o;
-    for(const x of o){const r=dfs(x);if(r)return r}
-  }else if(o&&typeof o==='object'){for(const k in o){const r=dfs(o[k]);if(r)return r}}
-  return null;
-}
-function parse(txt){
-  const ev=[];let fps=0,j=null;
-  try{j=JSON.parse(txt)}catch(e){}
-  if(j&&typeof j==='object'){
-    fps=+(j.framerate||j.fps||(j.meta&&(j.meta.fps||j.meta.framerate))||(j.settings&&j.settings.fps))||0;
-    for(const e of dfs(j)||[]){
-      const f=e.frame??e.f;if(f==null)continue;
-      if(e.btn!=null&&e.btn!=1)continue;
-      const d=e.down??e.pressed??e.hold;if(d==null)continue;
-      ev.push({f:+f,down:!!d,p2:!!(e['2p']??e.p2??e.player2)});
-    }
-  }else{
-    const rows=txt.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&!/^[#\/]/.test(l)).map(l=>l.split(/[\s,;|]+/).map(Number)).filter(r=>r.length&&r.every(n=>!isNaN(n)));
-    if(rows.length>1&&rows[0].length===1&&rows[0][0]>=1&&rows[0][0]<=1000&&rows[1].length>1)fps=rows.shift()[0];
-    let a=0,b=0,tog=true;
-    for(const r of rows){
-      if(r.length>=3){if(r[1]!==a){ev.push({f:r[0],down:!!r[1],p2:false});a=r[1]}if(r[2]!==b){ev.push({f:r[0],down:!!r[2],p2:true});b=r[2]}}
-      else if(r.length===2)ev.push({f:r[0],down:!!r[1],p2:false});
-      else{ev.push({f:r[0],down:tog,p2:false});tog=!tog}
-    }
-  }
-  ev.sort((x,y)=>x.f-y.f);
-  return{ev,fps};
-}
-function build(){
-  const fps=+$('mfps').value||240;
-  EV=[];SEG=[];const act=[null,null];
-  for(const e of M.ev){
-    const t=e.f/fps,p=e.p2?1:0;
-    if(e.down&&!act[p]){act[p]={s:t,e:null,p};SEG.push(act[p]);EV.push({t,d:true,p})}
-    else if(!e.down&&act[p]){act[p].e=t;act[p]=null;EV.push({t,d:false,p})}
-  }
-  SEG.forEach(s=>{if(s.e==null)s.e=s.s+.05});
-  DUR=EV.length?EV[EV.length-1].t:0;
-  $('seek').max=DUR||1;
-}
-const cur=()=>playing?base+(performance.now()-t0)/1000*spd:base;
-function firstIdx(t){let i=0;while(i<EV.length&&EV[i].t<t)i++;return i}
-function fire(e,when){
-  if(e.p&&!$('p2').checked)return;
-  if(e.d){const cat=catFor(e.t-mLast);mLast=mDown=e.t;const r=pick('click',cat);if(r)src(r.s.buf,when)}
-  else{const r=pick('release',catFor(e.t-mDown));if(r)src(r.s.buf,when)}
-}
-function draw(c){
-  const cv=$('tl'),dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
-  if(cv.width!==Math.round(w*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
-  const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
-  const cs=getComputedStyle(document.documentElement),acc=cs.getPropertyValue('--acc').trim(),mut=cs.getPropertyValue('--mut').trim();
-  const span=4,x=t=>((t-c)/span+.3)*w,rows=[h*.1,h*.56],rh=h*.34;
-  g.font='11px system-ui';g.fillStyle=mut;g.fillText('P1',4,rows[0]-1>8?rows[0]-1:9);g.fillText('P2',4,rows[1]-1);
-  for(const s of SEG){
-    const x1=x(s.s),x2=Math.max(x(s.e),x1+2);if(x2<0||x1>w)continue;
-    const lit=c>=s.s&&c<=s.e;
-    g.globalAlpha=lit?1:.55;g.fillStyle=lit?'#ffd23f':acc;g.fillRect(x1,rows[s.p],x2-x1,rh);
-  }
-  g.globalAlpha=1;g.fillStyle=mut;g.fillRect(x(c),0,2,h);
-  const fps=+$('mfps').value||240;
-  $('mt').textContent=c.toFixed(2)+'s / '+DUR.toFixed(2)+'s | frame '+Math.round(c*fps);
-}
-function tick(){
-  if(!playing)return;
-  const c=cur();
-  while(idx<EV.length&&EV[idx].t<=c+.1){fire(EV[idx],AC.currentTime+Math.max(0,(EV[idx].t-c)/spd));idx++}
-  $('seek').value=c;draw(c);
-  if(c>DUR+.5){pause(true);return}
-  requestAnimationFrame(tick);
-}
-function seekTo(t){
-  base=Math.max(0,t);t0=performance.now();idx=firstIdx(base);mLast=-1e9;
-  $('seek').value=base;draw(base);
-}
-function play(){
-  if(!EV.length)return;
-  AC.resume();spd=+$('spd').value;
-  if(base>=DUR+.4)base=0;
-  seekTo(base);playing=true;$('mplay').textContent='Pause';tick();
-}
-function pause(end){
-  if(playing)base=end?0:cur();
-  playing=false;$('mplay').textContent='Play';draw(base);$('seek').value=base;
-}
-$('mplay').onclick=()=>playing?pause():play();
-$('mrst').onclick=()=>seekTo(0);
-$('seek').oninput=e=>seekTo(+e.target.value);
-$('spd').onchange=()=>{const c=cur();spd=+$('spd').value;seekTo(c)};
-$('mfps').onchange=()=>{if(!M)return;const c=cur();build();seekTo(c)};
-$('mfile').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  pause();
-  let r;try{r=parse(await f.text())}catch(err){r={ev:[],fps:0}}
-  if(!r.ev.length){
-    M=null;EV=[];SEG=[];DUR=0;draw(0);
-    $('mstat').textContent=f.name+': could not read any inputs. Binary formats (.zbot, .mhr, binary .gdr, etc.) are not supported yet; export as JSON or text.';
-    return;
-  }
-  M=r;if(r.fps)$('mfps').value=r.fps;
-  build();seekTo(0);
-  $('mstat').textContent=f.name+': '+EV.length+' inputs, '+(r.fps?r.fps+' fps':'no FPS in file, assuming 240 (change it above)')+'.';
-};
-draw(0);
 </script>
 </body>
 </html>
