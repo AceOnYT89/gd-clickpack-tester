@@ -50,11 +50,13 @@ input[type=number]{width:64px;padding:5px;border-radius:6px;border:1px solid var
     <label>Pitch jitter <input id="jit" type="checkbox"></label>
     <label>Spam CPS <input id="cps" type="number" min="1" max="30" value="10"></label>
     <label>Variance % <input id="var" type="number" min="0" max="100" value="0"></label>
+    
     <button id="spam">Auto-spam</button>
   </div>
   <div class="row">
-    <label>Micro &lt; <input id="t1" type="number" step=".01" value=".10">s</label>
+    
     <label>Soft &lt; <input id="t2" type="number" step=".01" value=".20">s</label>
+    <label>Normal <b id="nr" style="color:var(--text);font-weight:600"></b></label>
     <label>Hard &gt; <input id="t3" type="number" step=".1" value="2">s</label>
   </div>
 </div>
@@ -65,14 +67,14 @@ input[type=number]{width:64px;padding:5px;border-radius:6px;border:1px solid var
 const AC=new(window.AudioContext||window.webkitAudioContext)();
 const gain=AC.createGain();gain.connect(AC.destination);
 const $=id=>document.getElementById(id);
-const CATS=['micro','soft','normal','hard'];
-const mk=()=>({micro:[],soft:[],normal:[],hard:[]});
+const CATS=['soft','normal','hard'];
+const mk=()=>({soft:[],normal:[],hard:[]});
 let bank={click:mk(),release:mk()};
 
 function classify(path){
   const p=path.toLowerCase();
   const type=p.includes('release')?'release':'click';
-  const cat=p.includes('micro')?'micro':p.includes('soft')?'soft':p.includes('hard')?'hard':'normal';
+  const cat=p.includes('micro')||p.includes('soft')?'soft':p.includes('hard')?'hard':'normal';
   return{type,cat};
 }
 async function load(fileList){
@@ -113,8 +115,8 @@ function pick(type,cat){
   return null;
 }
 function catFor(sec){
-  const t1=+$('t1').value,t2=+$('t2').value,t3=+$('t3').value;
-  return sec<t1?'micro':sec<t2?'soft':sec>t3?'hard':'normal';
+  const t2=+$('t2').value,t3=+$('t3').value;
+  return sec<t2?'soft':sec>t3?'hard':'normal';
 }
 let lastDown=-1e9,downAt=0,held=false;
 function down(){
@@ -156,6 +158,18 @@ $('spam').onclick=()=>{
   if(timer){clearTimeout(timer);timer=null;$('spam').textContent='Auto-spam';return}
   $('spam').textContent='Stop';spamStep();
 };
+const SAVE=['vol','jit','cps','var','t2','t3'],KEY='gd-clickpack-tester';
+try{
+  const o=JSON.parse(localStorage.getItem(KEY)||'{}');
+  for(const id of SAVE){if(!(id in o))continue;const el=$(id);if(el.type==='checkbox')el.checked=!!o[id];else el.value=o[id]}
+  gain.gain.value=+$('vol').value;
+}catch(e){}
+function saveOpts(){
+  try{const o={};for(const id of SAVE){const el=$(id);o[id]=el.type==='checkbox'?el.checked:el.value}localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}
+}
+for(const id of SAVE)$(id).addEventListener('input',saveOpts);
+function updNR(){$('nr').textContent=(+$('t2').value||0)+' to '+(+$('t3').value||0)+' s'}
+$('t2').addEventListener('input',updNR);$('t3').addEventListener('input',updNR);updNR();
 </script>
 </body>
 </html>
