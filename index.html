@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GD Clickpack Tester</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect x='2' y='2' width='252' height='252' rx='56' fill='%23fff' stroke='%23d9dce3' stroke-width='4'/%3E%3Cg transform='translate(0,-7)'%3E%3Cpath transform='translate(-8,0)' d='M96 40V136L122 112L142 156L162 147L142 104H176Z' fill='%23000' stroke='%23000' stroke-width='8' stroke-linejoin='round'/%3E%3Cg fill='%23000' transform='translate(1,0)'%3E%3Crect x='48' y='192' width='14' height='20' rx='7'/%3E%3Crect x='72' y='180' width='14' height='44' rx='7'/%3E%3Crect x='96' y='170' width='14' height='64' rx='7'/%3E%3Crect x='120' y='186' width='14' height='32' rx='7'/%3E%3Crect x='144' y='176' width='14' height='52' rx='7'/%3E%3Crect x='168' y='188' width='14' height='28' rx='7'/%3E%3Crect x='192' y='196' width='14' height='12' rx='7'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root{--bg:#f4f5f8;--card:#fff;--text:#16181d;--mut:#6b7280;--acc:#2f7cf6;--bd:#d9dce3;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1115;--card:#1a1d24;--text:#eceef3;--mut:#9aa1ae;--acc:#5b9bff;--bd:#2c313b;color-scheme:dark}}
@@ -48,6 +49,7 @@ input[type=number]{width:64px;padding:5px;border-radius:6px;border:1px solid var
     <label>Volume <input id="vol" type="range" min="0" max="1" step=".01" value=".8"></label>
     <label>Pitch jitter <input id="jit" type="checkbox"></label>
     <label>Spam CPS <input id="cps" type="number" min="1" max="30" value="10"></label>
+    <label>Variance % <input id="var" type="number" min="0" max="100" value="0"></label>
     <button id="spam">Auto-spam</button>
   </div>
   <div class="row">
@@ -144,11 +146,15 @@ $('dir').onchange=e=>load(e.target.files);
 $('files').onchange=e=>load(e.target.files);
 $('clear').onclick=()=>{bank={click:mk(),release:mk()};$('info').textContent='No sounds loaded.';render()};
 let timer=null;
+function spamStep(){
+  const base=1000/Math.max(1,+$('cps').value||10),v=Math.min(100,Math.max(0,+$('var').value||0))/100;
+  const per=Math.max(15,base*(1+(Math.random()*2-1)*v));
+  down();setTimeout(up,per/2);
+  timer=setTimeout(spamStep,per);
+}
 $('spam').onclick=()=>{
-  if(timer){clearInterval(timer);timer=null;$('spam').textContent='Auto-spam';return}
-  const per=1000/Math.max(1,+$('cps').value||10);
-  $('spam').textContent='Stop';
-  timer=setInterval(()=>{down();setTimeout(up,per/2)},per);
+  if(timer){clearTimeout(timer);timer=null;$('spam').textContent='Auto-spam';return}
+  $('spam').textContent='Stop';spamStep();
 };
 </script>
 </body>
